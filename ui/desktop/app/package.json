@@ -1,0 +1,8 @@
+{
+  "name": "aicage-desktop",
+  "productName": "AICage",
+  "version": "1.0.0",
+  "description": "Desktop chat for the isolated AICage agent",
+  "private": true,
+  "main": "main.cjs"
+}

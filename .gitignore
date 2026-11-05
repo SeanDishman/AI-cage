@@ -1,0 +1,47 @@
+# Generated binaries, dependencies, reports and runtime data
+build*/
+dist/
+node_modules/
+artifacts/
+test-results/
+.cache/
+__pycache__/
+*.pyc
+*.exe
+*.dll
+*.pdb
+*.log
+*.jsonl
+*.stdout
+*.stderr
+
+# Conversation recovery and agent/browser profiles are private local data
+.vibecode/
+.codex/
+.git-credentials
+.npmrc
+.impeccable/*
+!.impeccable/design.json
+
+# Account credentials and machine-specific secrets
+auth.json
+auth.*.json
+credentials.json
+credentials.*.json
+secrets.json
+secrets.*.json
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+id_rsa*
+id_ed25519*
+
+# Local-only scanner outputs and editor state
+.vscode/
+.idea/
+Thumbs.db
+.DS_Store

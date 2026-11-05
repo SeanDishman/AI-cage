@@ -1,0 +1,68 @@
+import { chromium } from 'playwright';
+import assert from 'node:assert/strict';
+import { mkdir } from 'node:fs/promises';
+import path from 'node:path';
+import { fixture, ui } from './harness.mjs';
+const server = await fixture(43138);
+const browser = await chromium.launch({ channel: 'chrome', headless: true });
+const shots = path.resolve(ui, '..', '.impeccable', 'review'); await mkdir(shots, { recursive: true });
+let checks = 0;
+function pass(text) { checks++; console.log(`PASS ${text}`); }
+try {
+  const context = await browser.newContext({ viewport: { width: 1440, height: 960 }, colorScheme: 'light', reducedMotion: 'reduce' });
+  const page = await context.newPage(); const failures = [];
+  page.on('pageerror', error => failures.push(error.message));
+  page.on('console', msg => { if (msg.type() === 'error' && /Content Security Policy|Refused to/.test(msg.text())) failures.push(msg.text()); });
+  async function capture(target, name) {
+    await target.waitForFunction(() => document.getElementById('toast').hidden);
+    await target.screenshot({ path: path.join(shots, name), fullPage: true });
+  }
+  await page.goto(server.url); await page.waitForFunction(() => document.getElementById('connection-text').textContent === 'Stopped');
+  assert(!page.url().includes('token='));
+  assert(await page.locator('#send').isDisabled());
+  await page.locator('#start').click();
+  await page.waitForFunction(() => document.getElementById('connection-text').textContent === 'Running');
+  await page.locator('#ready-action').click();
+  await page.waitForFunction(() => document.getElementById('internet').getAttribute('aria-checked') === 'true');
+  pass('Startup, internet toggle, confirmed status and token removal');
+  await capture(page, 'desktop.png');
+  await page.locator('[data-prompt]').first().click(); await page.locator('#prompt').press('Enter');
+  await page.waitForSelector('.assistant .message-body'); await page.waitForFunction(() => document.getElementById('thinking').hidden);
+  assert.match(await page.locator('.assistant').innerText(), /Synthetic fixture reply/);
+  await page.locator('.activity summary').click(); assert.match(await page.locator('.activity pre').innerText(), /Synthetic test output/);
+  await capture(page, 'desktop-chat.png');
+  await page.locator('#prompt').fill('Follow up ✓'); await page.locator('#prompt').press('Enter');
+  await page.waitForFunction(() => document.querySelectorAll('.assistant').length === 2);
+  pass('Chat, command activity, Unicode follow-up and conversation resume');
+  await page.reload(); await page.waitForSelector('.assistant'); assert.equal(await page.locator('.assistant').count(), 2);
+  pass('History survives reload without exposing account credentials');
+  await page.locator('#prompt').fill('<img src=x onerror="window.xss=true"> **literal HTML**'); await page.locator('#prompt').press('Enter');
+  await page.waitForFunction(() => document.querySelectorAll('.assistant').length === 3);
+  assert.equal(await page.locator('#messages img').count(), 0); assert.equal(await page.evaluate(() => window.xss), undefined);
+  pass('Untrusted model HTML remains text');
+  await page.locator('#prompt').fill('test-long'); await page.locator('#prompt').press('Enter');
+  await page.waitForFunction(() => !document.getElementById('thinking').hidden);
+  await page.locator('#emergency-stop').click();
+  await page.waitForFunction(() => document.getElementById('connection-text').textContent === 'Stopped');
+  await page.waitForFunction(() => document.getElementById('thinking').hidden);
+  assert(await page.locator('#send').isDisabled()); pass('Emergency stop works while a chat is busy');
+  await page.locator('#new-chat').click(); await page.locator('#theme').click();
+  await capture(page, 'desktop-dark.png');
+  const mobile = await context.newPage(); await mobile.setViewportSize({ width: 390, height: 844 });
+  await mobile.goto(server.url); await mobile.waitForFunction(() => document.getElementById('connection-text').textContent === 'Stopped');
+  await mobile.evaluate(() => { document.documentElement.dataset.theme = 'light'; });
+  assert(await mobile.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+  assert(await mobile.locator('#history-panel').evaluate(el => el.inert));
+  assert(await mobile.locator('#controls-panel').evaluate(el => el.inert));
+  await capture(mobile, 'mobile.png');
+  await mobile.locator('#open-controls').click(); await mobile.locator('#start').click();
+  await mobile.waitForFunction(() => document.getElementById('connection-text').textContent === 'Running');
+  await capture(mobile, 'mobile-controls.png');
+  await mobile.keyboard.press('Escape'); assert(await mobile.locator('#controls-panel').evaluate(el => el.inert));
+  await mobile.locator('#open-history').click(); await mobile.keyboard.press('Escape');
+  assert.equal(await mobile.evaluate(() => document.activeElement.id), 'open-history');
+  pass('390px layout, both drawers, focus restoration and dark theme');
+  assert.deepEqual(failures, []); pass('No browser JavaScript or CSP errors');
+  console.log(`${checks} browser checks passed. Screenshots use the synthetic fixture and are saved under .impeccable/review/.`);
+  await context.close();
+} finally { await browser.close(); server.stop(); }
